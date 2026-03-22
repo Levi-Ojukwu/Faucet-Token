@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Zap, Wallet, Settings, ChevronDown } from 'lucide-react'
+import { Zap, Wallet, Settings, ChevronDown, type LucideIcon } from 'lucide-react'
 
 interface MenuItem {
   id: string
   label: string
-  icon: React.ElementType
+  icon: LucideIcon
   submenu: Array<{ id: string; label: string }> | null
 }
 
@@ -19,9 +19,8 @@ export default function Sidebar({
   currentPage,
   onNavigate,
   isExpanded = true,
-  onToggleExpanded,
 }: SidebarProps) {
-  const [expandedSubmenu, setExpandedSubmenu] = useState<string | null>(null)
+  const [expandedSubmenu] = useState<string | null>(null)
 
   const menuItems: MenuItem[] = [
     {

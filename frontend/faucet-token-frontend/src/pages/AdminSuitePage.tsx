@@ -1,4 +1,6 @@
+// src/pages/AdminSuitePage.tsx
 import { useState } from 'react'
+import { formatUnits } from 'ethers'
 import { useWallet } from '../context/WalletContext'
 import { useContractRead } from '../hooks/useContractRead'
 import { useContractWrite } from '../hooks/useContractWrite'
@@ -9,138 +11,99 @@ export default function AdminSuitePage() {
   const [mintRecipient, setMintRecipient] = useState('')
   const [mintAmount, setMintAmount] = useState('')
   const [newOwner, setNewOwner] = useState('')
-  const [mintError, setMintError] = useState<string | null>(null)
-  const [transferOwnerError, setTransferOwnerError] = useState<string | null>(null)
   const [showTransferWarning, setShowTransferWarning] = useState(false)
 
-  // Read contract data
-  const { data: owner } = useContractRead({
-    contractAddress: '0x...',
+  // ── READ hooks ──
+  const { data: ownerAddress } = useContractRead<string>({
     functionName: 'owner',
   })
 
-  const { data: totalSupply } = useContractRead({
-    contractAddress: '0x...',
+  const { data: totalSupplyRaw, refetch: refetchSupply } = useContractRead<bigint>({
     functionName: 'totalSupply',
   })
 
-  const { data: maxSupply } = useContractRead({
-    contractAddress: '0x...',
+  const { data: maxSupplyRaw } = useContractRead<bigint>({
     functionName: 'maxSupply',
   })
 
-  const { write: mint, isLoading: isMintLoading } = useContractWrite({
-    contractAddress: '0x...',
-    functionName: 'mint',
-  })
+  // ── WRITE hooks ──
+  const {
+    write: mint,
+    isLoading: isMintLoading,
+    isSuccess: isMintSuccess,
+    error: mintError,
+    reset: resetMint,
+  } = useContractWrite({ functionName: 'mint' })
 
-  const { write: transferOwnership, isLoading: isTransferLoading } = useContractWrite({
-    contractAddress: '0x...',
-    functionName: 'transferOwnership',
-  })
+  const {
+    write: transferOwnership,
+    isLoading: isTransferLoading,
+    isSuccess: isTransferSuccess,
+    error: transferOwnerError,
+    reset: resetTransfer,
+  } = useContractWrite({ functionName: 'transferOwnership' })
+
+  // Format values
+  const totalSupply = totalSupplyRaw ? parseFloat(formatUnits(totalSupplyRaw, 18)) : 0
+  const maxSupply = maxSupplyRaw ? parseFloat(formatUnits(maxSupplyRaw, 18)) : 10_000_000
+  const progressPct = maxSupply > 0 ? Math.min(100, Math.round((totalSupply / maxSupply) * 100)) : 0
+  const remaining = (maxSupply - totalSupply).toLocaleString('en-US', { maximumFractionDigits: 0 })
+
+  const isOwner =
+    !!address &&
+    !!ownerAddress &&
+    address.toLowerCase() === ownerAddress.toLowerCase()
 
   const handleMint = async () => {
-    setMintError(null)
-
-    if (!address) {
-      setMintError('Wallet not connected')
-      return
-    }
-
-    if (address.toLowerCase() !== owner?.toLowerCase?.()) {
-      setMintError('Only the contract owner can mint tokens')
-      return
-    }
-
-    if (!mintRecipient.trim()) {
-      setMintError('Please enter a recipient address')
-      return
-    }
-
-    if (!mintAmount.trim() || isNaN(Number(mintAmount))) {
-      setMintError('Please enter a valid amount')
-      return
-    }
-
-    const amount = Number(mintAmount)
-    const current = Number(totalSupply || 0)
-    const max = Number(maxSupply || 10000000)
-
-    if (current + amount > max) {
-      setMintError(`Cannot mint. Maximum supply is ${max} LTK. Current supply: ${current} LTK`)
-      return
-    }
-
-    try {
-      const result = await mint([mintRecipient, mintAmount])
-      if (result) {
-        setMintRecipient('')
-        setMintAmount('')
-      }
-    } catch (err) {
-      setMintError(err instanceof Error ? err.message : 'Failed to mint tokens')
+    resetMint()
+    const result = await mint([mintRecipient, mintAmount])
+    if (result) {
+      setMintRecipient('')
+      setMintAmount('')
+      refetchSupply()
     }
   }
 
   const handleTransferOwnership = async () => {
-    setTransferOwnerError(null)
-
-    if (!address) {
-      setTransferOwnerError('Wallet not connected')
-      return
-    }
-
-    if (address.toLowerCase() !== owner?.toLowerCase?.()) {
-      setTransferOwnerError('Only the contract owner can transfer ownership')
-      return
-    }
-
-    if (!newOwner.trim()) {
-      setTransferOwnerError('Please enter a new owner address')
-      return
-    }
-
-    if (!showTransferWarning) {
-      return
-    }
-
-    try {
-      const result = await transferOwnership([newOwner])
-      if (result) {
-        setNewOwner('')
-        setShowTransferWarning(false)
-      }
-    } catch (err) {
-      setTransferOwnerError(err instanceof Error ? err.message : 'Failed to transfer ownership')
+    resetTransfer()
+    const result = await transferOwnership([newOwner])
+    if (result) {
+      setNewOwner('')
+      setShowTransferWarning(false)
     }
   }
 
-  const isOwner = address?.toLowerCase() === owner?.toLowerCase?.()
-
   return (
     <div className="space-y-8">
-      {/* Page Header */}
+      {/* Header */}
       <div>
         <div className="inline-flex items-center px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-semibold tracking-wider mb-4">
-          <span className="w-2 h-2 bg-yellow-600 rounded-full mr-2"></span>
+          <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2" />
           OWNER ONLY ACCESS
         </div>
         <h2 className="text-2xl md:text-3xl font-bold text-dark">Admin Suite</h2>
         <p className="text-gray-600 mt-2">
-          Manage the LTK ecosystem's core functions and ownership protocols through the architectural control plane.
+          Manage the LTK ecosystem's core functions and ownership protocols.
         </p>
       </div>
 
+      {/* Owner info */}
+      {ownerAddress && (
+        <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-500">
+          Contract owner: <span className="font-mono text-dark">{ownerAddress}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Content */}
+        {/* ── Main ── */}
         <div className="lg:col-span-2 space-y-6">
-          {!isOwner && (
-            <div className="p-4 bg-warning bg-opacity-10 border border-warning rounded-lg text-warning text-sm font-medium">
-              You do not have owner privileges to access these functions.
+          {!isOwner && address && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm font-medium">
+              ⚠️ You do not have owner privileges. Connect the owner wallet to use these functions.
             </div>
           )}
 
-          {/* Mint Tokens Card */}
+          {/* Mint Tokens */}
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-200">
             <div className="flex items-center space-x-3 mb-6">
               <span className="text-2xl">➕</span>
@@ -148,7 +111,6 @@ export default function AdminSuitePage() {
             </div>
 
             <div className="space-y-4">
-              {/* Recipient Address */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">RECIPIENT ADDRESS</label>
                 <input
@@ -157,11 +119,9 @@ export default function AdminSuitePage() {
                   value={mintRecipient}
                   onChange={(e) => setMintRecipient(e.target.value)}
                   disabled={!isOwner}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-600 focus:ring-1 focus:ring-primary-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:bg-gray-50 disabled:cursor-not-allowed"
                 />
               </div>
-
-              {/* Amount */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">TOKEN AMOUNT</label>
                 <input
@@ -170,29 +130,39 @@ export default function AdminSuitePage() {
                   value={mintAmount}
                   onChange={(e) => setMintAmount(e.target.value)}
                   disabled={!isOwner}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-600 focus:ring-1 focus:ring-primary-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:bg-gray-50 disabled:cursor-not-allowed"
                 />
               </div>
 
-              {/* Error */}
               {mintError && (
-                <div className="p-3 bg-error bg-opacity-10 border border-error rounded-lg text-error text-sm">
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
                   {mintError}
                 </div>
               )}
+              {isMintSuccess && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
+                  ✅ Tokens minted successfully!
+                </div>
+              )}
 
-              {/* Mint Button */}
               <button
                 onClick={handleMint}
-                disabled={!isOwner || isMintLoading}
-                className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                disabled={!isOwner || isMintLoading || !mintRecipient || !mintAmount}
+                className="w-full bg-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
-                {isMintLoading ? 'Executing...' : 'Execute Mint Transaction'}
+                {isMintLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                    Executing...
+                  </span>
+                ) : (
+                  'Execute Mint Transaction'
+                )}
               </button>
             </div>
           </div>
 
-          {/* Ownership Management Card */}
+          {/* Ownership Transfer */}
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-200">
             <div className="flex items-center space-x-3 mb-6">
               <span className="text-2xl">🛡️</span>
@@ -200,7 +170,6 @@ export default function AdminSuitePage() {
             </div>
 
             <div className="space-y-4">
-              {/* New Owner Address */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">NEW OWNER ADDRESS</label>
                 <input
@@ -209,37 +178,39 @@ export default function AdminSuitePage() {
                   value={newOwner}
                   onChange={(e) => setNewOwner(e.target.value)}
                   disabled={!isOwner}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-600 focus:ring-1 focus:ring-primary-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:bg-gray-50 disabled:cursor-not-allowed"
                 />
               </div>
 
-              {/* Warning Message */}
-              <div className="p-4 bg-error bg-opacity-10 border border-error rounded-lg flex items-start space-x-3">
-                <AlertTriangle size={20} className="text-error flex-shrink-0 mt-0.5" />
-                <p className="text-error text-sm">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-3">
+                <AlertTriangle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-red-600 text-sm">
                   This action is irreversible. Transferring ownership will remove your administrative privileges immediately.
                 </p>
               </div>
 
-              {/* Error */}
               {transferOwnerError && (
-                <div className="p-3 bg-error bg-opacity-10 border border-error rounded-lg text-error text-sm">
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
                   {transferOwnerError}
                 </div>
               )}
+              {isTransferSuccess && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
+                  ✅ Ownership transferred successfully!
+                </div>
+              )}
 
-              {/* Confirm Transfer Button */}
               {!showTransferWarning ? (
                 <button
                   onClick={() => setShowTransferWarning(true)}
                   disabled={!isOwner || !newOwner.trim()}
-                  className="w-full bg-secondary-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-secondary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  className="w-full bg-secondary text-white py-3 px-6 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   Transfer Ownership
                 </button>
               ) : (
-                <div className="space-y-3 p-4 bg-warning bg-opacity-10 border border-warning rounded-lg">
-                  <p className="text-warning text-sm font-semibold">Are you sure? This is irreversible.</p>
+                <div className="space-y-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-yellow-700 text-sm font-semibold">⚠️ Are you sure? This is irreversible.</p>
                   <div className="flex space-x-3">
                     <button
                       onClick={() => setShowTransferWarning(false)}
@@ -250,7 +221,7 @@ export default function AdminSuitePage() {
                     <button
                       onClick={handleTransferOwnership}
                       disabled={isTransferLoading}
-                      className="flex-1 px-4 py-2 bg-error text-white rounded-lg font-semibold hover:bg-opacity-90 disabled:opacity-50 transition"
+                      className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 disabled:opacity-50 transition"
                     >
                       {isTransferLoading ? 'Processing...' : 'Confirm Transfer'}
                     </button>
@@ -261,62 +232,51 @@ export default function AdminSuitePage() {
           </div>
         </div>
 
-        {/* Sidebar - Supply Metrics */}
+        {/* ── Sidebar ── */}
         <div className="lg:col-span-1 space-y-6">
-          {/* Supply Metrics Card */}
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 sticky top-24">
             <h4 className="text-lg font-bold text-dark mb-6">SUPPLY METRICS</h4>
 
-            {/* Current Supply */}
             <div className="mb-6">
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Current Circulating Supply</p>
               <p className="text-3xl font-bold text-dark">
-                {totalSupply || '0'}
-                <span className="text-sm text-gray-600 ml-2">/ {maxSupply || '10,000,000'} LTK</span>
+                {totalSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                <span className="text-sm text-gray-500 ml-2">
+                  / {maxSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })} LTK
+                </span>
               </p>
             </div>
 
-            {/* Progress Bar */}
             <div className="mb-6">
               <div className="flex justify-between items-center mb-2">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">USAGE</p>
-                <p className="text-xs text-gray-500 font-semibold">
-                  {totalSupply && maxSupply ? Math.round((Number(totalSupply) / Number(maxSupply)) * 100) : 0}%
-                </p>
+                <p className="text-xs text-gray-600 font-semibold">{progressPct}%</p>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                 <div
-                  className="bg-primary-600 h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${totalSupply && maxSupply ? Math.round((Number(totalSupply) / Number(maxSupply)) * 100) : 0}%`,
-                  }}
-                ></div>
+                  className="bg-primary h-full rounded-full transition-all duration-500"
+                  style={{ width: `${progressPct}%` }}
+                />
               </div>
             </div>
 
-            {/* Remaining */}
             <div className="space-y-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex justify-between">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">USAGE</p>
-                <p className="text-xs text-gray-700 font-semibold">20%</p>
+                <p className="text-xs text-gray-700 font-semibold">{progressPct}%</p>
               </div>
               <div className="flex justify-between">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">REMAINING</p>
-                <p className="text-xs text-gray-700 font-semibold">8.0M</p>
+                <p className="text-xs text-gray-700 font-semibold">{remaining} LTK</p>
               </div>
             </div>
           </div>
 
-          {/* Network Status Card */}
-          <div className="bg-gradient-to-br from-primary-600 to-primary-700 rounded-2xl p-6 text-white shadow-sm overflow-hidden relative">
-            <div className="absolute inset-0 opacity-10">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-white rounded-full blur-3xl"></div>
-            </div>
+          <div className="bg-primary rounded-2xl p-6 text-white shadow-sm overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl" />
             <div className="relative z-10">
-              <p className="text-xs font-semibold tracking-wider opacity-80 mb-3">ECOSYSTEM VISION</p>
-              <p className="text-lg font-bold leading-tight">
-                Built on solid architectural foundations.
-              </p>
+              <p className="text-xs font-semibold tracking-wider opacity-70 mb-3">ECOSYSTEM VISION</p>
+              <p className="text-lg font-bold leading-tight">Built on solid architectural foundations.</p>
             </div>
           </div>
         </div>

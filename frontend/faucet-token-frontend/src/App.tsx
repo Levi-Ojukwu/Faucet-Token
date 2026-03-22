@@ -1,30 +1,19 @@
-import { useState, useEffect } from 'react'
+// src/App.tsx
 import { WalletProvider, useWallet } from './context/WalletContext'
 import LandingPage from './pages/LandingPage'
 import DashboardLayout from './components/DashboardLayout'
-// import './index.css'
-import "./App.css"
+import './connection' // Initialize AppKit
+import './App.css'
 
 function AppContent() {
-  const { isConnected } = useWallet()
-  const [isInitialized, setIsInitialized] = useState(false)
+  const { isConnected, isLoading } = useWallet()
 
-  useEffect(() => {
-    // Check if wallet was previously connected
-    const savedAddress = localStorage.getItem('wallet_address')
-    if (savedAddress) {
-      setIsInitialized(true)
-    } else {
-      setIsInitialized(true)
-    }
-  }, [])
-
-  if (!isInitialized) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-accent">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="mt-4 text-primary font-medium">Loading...</p>
+          <p className="mt-4 text-primary font-medium">Connecting...</p>
         </div>
       </div>
     )

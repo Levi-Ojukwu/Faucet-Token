@@ -1,3 +1,5 @@
+// src/components/Navbar.tsx
+import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
 import { useWallet } from '../context/WalletContext'
 import { Menu, X } from 'lucide-react'
 import { useState } from 'react'
@@ -9,15 +11,15 @@ interface NavbarProps {
 }
 
 export default function Navbar({ isDashboard = false, currentPage = 'home', onNavigate }: NavbarProps) {
-  const { connectWallet, disconnectWallet, isConnected, address, isLoading } = useWallet()
+  const { disconnectWallet, isConnected } = useWallet()
+  const { open } = useAppKit()
+  const { address } = useAppKitAccount()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  const formatAddress = (addr: string | null) => {
-    if (!addr) return ''
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-  }
+  const truncate = (addr?: string | null) =>
+    addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : ''
 
-  const handleNavigation = (page: string) => {
+  const handleNav = (page: string) => {
     onNavigate?.(page)
     setMobileMenuOpen(false)
   }
@@ -29,75 +31,65 @@ export default function Navbar({ isDashboard = false, currentPage = 'home', onNa
           {/* Logo */}
           <div className="flex-shrink-0 font-bold text-lg">
             <span className="text-primary">LeviToken</span>
-            <span className="text-gray-400 ml-1">(LTK)</span>
+            {/* <span className="text-gray-400 ml-1">(LTK)</span> */}
           </div>
 
-          {/* Desktop Navigation */}
+          {/* Desktop Nav */}
           {isDashboard && (
             <div className="hidden md:flex items-center space-x-8">
-              <button
-                onClick={() => handleNavigation('claim')}
-                className={`font-medium transition ${
-                  currentPage === 'claim' ? 'text-primary border-b-2 border-primary' : 'text-gray-600 hover:text-primary'
-                }`}
-              >
-                Faucet
-              </button>
-              <button
-                onClick={() => handleNavigation('portfolio')}
-                className={`font-medium transition ${
-                  currentPage === 'portfolio' ? 'text-primary border-b-2 border-primary' : 'text-gray-600 hover:text-primary'
-                }`}
-              >
-                Portfolio
-              </button>
-              <button
-                onClick={() => handleNavigation('governance')}
-                className={`font-medium transition ${
-                  currentPage === 'governance' ? 'text-primary border-b-2 border-primary' : 'text-gray-600 hover:text-primary'
-                }`}
-              >
-                Governance
-              </button>
+              {['claim', 'portfolio', 'governance'].map((page) => (
+                <button
+                  key={page}
+                  onClick={() => handleNav(page)}
+                  className={`font-medium capitalize transition ${
+                    currentPage === page
+                      ? 'text-primary border-b-2 border-primary'
+                      : 'text-gray-600 hover:text-primary'
+                  }`}
+                >
+                  {page === 'claim' ? 'Faucet' : page === 'governance' ? 'Admin Suite' : 'Portfolio'}
+                </button>
+              ))}
             </div>
           )}
 
           {!isDashboard && (
             <div className="hidden md:flex items-center space-x-8">
-              <button className="font-medium text-primary border-b-2 border-primary">Home</button>
-              <button className="font-medium text-gray-600 hover:text-primary transition">Faucet</button>
-              <button className="font-medium text-gray-600 hover:text-primary transition">Docs</button>
+              {/* <button className="font-medium text-primary border-b-2 border-primary">Home</button> */}
+              {/* <button className="font-medium text-gray-600 hover:text-primary transition">Faucet</button> */}
+              {/* <button className="font-medium text-gray-600 hover:text-primary transition">Docs</button> */}
             </div>
           )}
 
-          {/* Right Side - Desktop */}
+          {/* Desktop Right */}
           <div className="hidden md:flex items-center space-x-4">
             {isConnected ? (
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
                 <div className="px-4 py-2 bg-gray-100 rounded-lg">
-                  <p className="text-sm font-medium text-gray-700">{formatAddress(address)}</p>
+                  <p className="text-sm font-medium text-gray-700 font-mono">{truncate(address)}</p>
                 </div>
                 <button
                   onClick={disconnectWallet}
-                  className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition"
+                  className="px-5 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition text-sm"
                 >
                   Disconnect
                 </button>
               </div>
             ) : (
               <button
-                onClick={connectWallet}
-                disabled={isLoading}
-                className="px-6 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-opacity-90 disabled:opacity-50 transition"
+                onClick={() => open()}
+                className="px-6 py-2 bg-[#4d5b49] text-white font-semibold rounded-lg hover:bg-primary-700 transition text-sm"
               >
-                {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                Connect Wallet
               </button>
             )}
           </div>
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center space-x-4">
-            {isConnected && <p className="text-xs font-medium text-primary">{formatAddress(address)}</p>}
+          {/* Mobile */}
+          <div className="md:hidden flex items-center space-x-3">
+            {isConnected && (
+              <p className="text-xs font-medium text-primary font-mono">{truncate(address)}</p>
+            )}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="text-gray-600 hover:text-primary transition"
@@ -112,34 +104,20 @@ export default function Navbar({ isDashboard = false, currentPage = 'home', onNa
           <div className="md:hidden border-t border-gray-200 bg-white pb-4">
             {isDashboard && (
               <>
-                <button
-                  onClick={() => handleNavigation('claim')}
-                  className={`block w-full text-left px-4 py-3 font-medium ${
-                    currentPage === 'claim' ? 'text-primary bg-gray-50' : 'text-gray-600'
-                  }`}
-                >
-                  Faucet
-                </button>
-                <button
-                  onClick={() => handleNavigation('portfolio')}
-                  className={`block w-full text-left px-4 py-3 font-medium ${
-                    currentPage === 'portfolio' ? 'text-primary bg-gray-50' : 'text-gray-600'
-                  }`}
-                >
-                  Portfolio
-                </button>
-                <button
-                  onClick={() => handleNavigation('governance')}
-                  className={`block w-full text-left px-4 py-3 font-medium ${
-                    currentPage === 'governance' ? 'text-primary bg-gray-50' : 'text-gray-600'
-                  }`}
-                >
-                  Governance
-                </button>
+                {['claim', 'portfolio', 'governance'].map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => handleNav(page)}
+                    className={`block w-full text-left px-4 py-3 font-medium capitalize ${
+                      currentPage === page ? 'text-primary bg-gray-50' : 'text-gray-600'
+                    }`}
+                  >
+                    {page === 'claim' ? 'Faucet' : page === 'governance' ? 'Admin Suite' : 'Portfolio'}
+                  </button>
+                ))}
               </>
             )}
-
-            <div className="border-t border-gray-200 pt-4 px-4 space-y-2">
+            <div className="border-t border-gray-200 pt-4 px-4">
               {isConnected ? (
                 <button
                   onClick={disconnectWallet}
@@ -149,11 +127,10 @@ export default function Navbar({ isDashboard = false, currentPage = 'home', onNa
                 </button>
               ) : (
                 <button
-                  onClick={connectWallet}
-                  disabled={isLoading}
-                  className="w-full px-4 py-2 bg-primary text-white font-semibold rounded-lg disabled:opacity-50"
+                  onClick={() => open()}
+                  className="w-full px-4 py-2 bg-primary text-white font-semibold rounded-lg"
                 >
-                  {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                  Connect Wallet
                 </button>
               )}
             </div>
