@@ -1,19 +1,21 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
 
-import {Script, console} from "forge-std/Script.sol";
-import {Counter} from "../src/Counter.sol";
+import "forge-std/Script.sol";
+import "../src/FaucetToken.sol";
 
-contract CounterScript is Script {
-    Counter public counter;
+contract DeployFaucetToken is Script {
+    function run() external {
+        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
+        address deployer    = vm.addr(deployerKey);
 
-    function setUp() public {}
+        vm.startBroadcast(deployerKey);
 
-    function run() public {
-        vm.startBroadcast();
-
-        counter = new Counter();
+        FaucetToken fToken = new FaucetToken(deployer);
 
         vm.stopBroadcast();
+
+        console.log("FaucetToken deployed at:", address(fToken));
+        console.log("Owner:", deployer);
     }
 }
