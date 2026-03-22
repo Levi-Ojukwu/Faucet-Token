@@ -13,7 +13,7 @@ export default function AdminSuitePage() {
   const [newOwner, setNewOwner] = useState('')
   const [showTransferWarning, setShowTransferWarning] = useState(false)
 
-  // ── READ hooks ──
+  // Read hooks
   const { data: ownerAddress } = useContractRead<string>({
     functionName: 'owner',
   })
