@@ -3,7 +3,7 @@ import { WalletProvider, useWallet } from './context/WalletContext'
 import LandingPage from './pages/LandingPage'
 import DashboardLayout from './components/DashboardLayout'
 import './connection' // Initialize AppKit
-import './App.css'
+// import './App.css'
 
 function AppContent() {
   const { isConnected, isLoading } = useWallet()

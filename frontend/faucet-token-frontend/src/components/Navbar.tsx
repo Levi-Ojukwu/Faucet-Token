@@ -29,15 +29,15 @@ export default function Navbar({ isDashboard = false, currentPage = 'home', onNa
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <div className="flex-shrink-0 font-bold text-lg">
-            <span className="text-primary">LeviToken</span>
-            {/* <span className="text-gray-400 ml-1">(LTK)</span> */}
+          <div className="flex gap-1 align font-bold text-lg">
+            <div className="text-gray-400 w-7 h-7 bg-primary ml-1"></div>
+            {/* <span className="text-primary">LeviToken</span> */}
           </div>
 
           {/* Desktop Nav */}
           {isDashboard && (
             <div className="hidden md:flex items-center space-x-8">
-              {['claim', 'portfolio', 'governance'].map((page) => (
+              {/* {['claim', 'portfolio', 'governance'].map((page) => (
                 <button
                   key={page}
                   onClick={() => handleNav(page)}
@@ -49,7 +49,7 @@ export default function Navbar({ isDashboard = false, currentPage = 'home', onNa
                 >
                   {page === 'claim' ? 'Faucet' : page === 'governance' ? 'Admin Suite' : 'Portfolio'}
                 </button>
-              ))}
+              ))} */}
             </div>
           )}
 
