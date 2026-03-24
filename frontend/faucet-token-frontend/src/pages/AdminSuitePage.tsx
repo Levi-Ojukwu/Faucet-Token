@@ -13,15 +13,13 @@ export default function AdminSuitePage() {
   const [newOwner, setNewOwner] = useState('')
   const [showTransferWarning, setShowTransferWarning] = useState(false)
 
-  // Read hooks
+  // ── READ hooks ──
   const { data: ownerAddress } = useContractRead<string>({
     functionName: 'owner',
   })
-
   const { data: totalSupplyRaw, refetch: refetchSupply } = useContractRead<bigint>({
     functionName: 'totalSupply',
   })
-
   const { data: maxSupplyRaw } = useContractRead<bigint>({
     functionName: 'maxSupply',
   })
@@ -43,11 +41,33 @@ export default function AdminSuitePage() {
     reset: resetTransfer,
   } = useContractWrite({ functionName: 'transferOwnership' })
 
-  // Format values
-  const totalSupply = totalSupplyRaw ? parseFloat(formatUnits(totalSupplyRaw, 18)) : 0
-  const maxSupply = maxSupplyRaw ? parseFloat(formatUnits(maxSupplyRaw, 18)) : 10_000_000
-  const progressPct = maxSupply > 0 ? Math.min(100, Math.round((totalSupply / maxSupply) * 100)) : 0
-  const remaining = (maxSupply - totalSupply).toLocaleString('en-US', { maximumFractionDigits: 0 })
+  // ─────────────────────────────────────────────────────
+  // Convert from wei FIRST, then do all math.
+  // Same fix as ClaimTokenPage — never divide bigints
+  // before converting to human-readable numbers.
+  // ─────────────────────────────────────────────────────
+  const totalSupply = totalSupplyRaw
+    ? parseFloat(formatUnits(totalSupplyRaw, 18))
+    : 0
+
+  const maxSupply = maxSupplyRaw
+    ? parseFloat(formatUnits(maxSupplyRaw, 18))
+    : 10_000_000
+
+  // Raw decimal percentage — do NOT round yet
+  const progressPct = maxSupply > 0
+    ? Math.min(100, (totalSupply / maxSupply) * 100)
+    : 0
+
+  // For display: show enough decimals so it's never "0%" when tokens exist
+  const formatProgress = (pct: number) => {
+    if (pct === 0) return '0%'
+    if (pct >= 1) return `${pct.toFixed(2)}%`
+    return `${pct.toFixed(4)}%`   // e.g. "0.0103%" for 1,030 / 10M
+  }
+
+  const remaining = (maxSupply - totalSupply)
+    .toLocaleString('en-US', { maximumFractionDigits: 0 })
 
   const isOwner =
     !!address &&
@@ -87,23 +107,26 @@ export default function AdminSuitePage() {
         </p>
       </div>
 
-      {/* Owner info */}
+      {/* Owner address info */}
       {ownerAddress && (
         <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-500">
-          Contract owner: <span className="font-mono text-dark">{ownerAddress}</span>
+          Contract owner:{' '}
+          <span className="font-mono text-dark">{ownerAddress}</span>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* ── Main ── */}
         <div className="lg:col-span-2 space-y-6">
+
+          {/* Non-owner warning */}
           {!isOwner && address && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm font-medium">
               ⚠️ You do not have owner privileges. Connect the owner wallet to use these functions.
             </div>
           )}
 
-          {/* Mint Tokens */}
+          {/* ── Mint Tokens ── */}
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-200">
             <div className="flex items-center space-x-3 mb-6">
               <span className="text-2xl">➕</span>
@@ -162,7 +185,7 @@ export default function AdminSuitePage() {
             </div>
           </div>
 
-          {/* Ownership Transfer */}
+          {/* ── Ownership Transfer ── */}
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-200">
             <div className="flex items-center space-x-3 mb-6">
               <span className="text-2xl">🛡️</span>
@@ -185,7 +208,8 @@ export default function AdminSuitePage() {
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-3">
                 <AlertTriangle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
                 <p className="text-red-600 text-sm">
-                  This action is irreversible. Transferring ownership will remove your administrative privileges immediately.
+                  This action is irreversible. Transferring ownership will remove your
+                  administrative privileges immediately.
                 </p>
               </div>
 
@@ -210,7 +234,9 @@ export default function AdminSuitePage() {
                 </button>
               ) : (
                 <div className="space-y-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-yellow-700 text-sm font-semibold">⚠️ Are you sure? This is irreversible.</p>
+                  <p className="text-yellow-700 text-sm font-semibold">
+                    ⚠️ Are you sure? This is irreversible.
+                  </p>
                   <div className="flex space-x-3">
                     <button
                       onClick={() => setShowTransferWarning(false)}
@@ -232,13 +258,16 @@ export default function AdminSuitePage() {
           </div>
         </div>
 
-        {/* ── Sidebar ── */}
+        {/* ── Sidebar: Supply Metrics ── */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 sticky top-24">
             <h4 className="text-lg font-bold text-dark mb-6">SUPPLY METRICS</h4>
 
+            {/* Circulating supply number */}
             <div className="mb-6">
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Current Circulating Supply</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                Current Circulating Supply
+              </p>
               <p className="text-3xl font-bold text-dark">
                 {totalSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                 <span className="text-sm text-gray-500 ml-2">
@@ -247,23 +276,40 @@ export default function AdminSuitePage() {
               </p>
             </div>
 
+            {/* Progress bar */}
             <div className="mb-6">
               <div className="flex justify-between items-center mb-2">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">USAGE</p>
-                <p className="text-xs text-gray-600 font-semibold">{progressPct}%</p>
+                <p className="text-xs text-gray-600 font-semibold">
+                  {formatProgress(progressPct)}
+                </p>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                {/*
+                  Math.max ensures a tiny visible sliver when tokens exist.
+                  The label above always shows the accurate number.
+                */}
                 <div
-                  className="bg-primary h-full rounded-full transition-all duration-500"
-                  style={{ width: `${progressPct}%` }}
+                  className="bg-primary h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${totalSupply > 0 ? Math.max(progressPct, 0.3) : 0}%`,
+                  }}
                 />
               </div>
+              {/* Sub-label for clarity */}
+              <p className="text-xs text-gray-400 mt-2">
+                {totalSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })} of{' '}
+                {maxSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })} LTK minted
+              </p>
             </div>
 
+            {/* Stats box */}
             <div className="space-y-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex justify-between">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">USAGE</p>
-                <p className="text-xs text-gray-700 font-semibold">{progressPct}%</p>
+                <p className="text-xs text-gray-700 font-semibold">
+                  {formatProgress(progressPct)}
+                </p>
               </div>
               <div className="flex justify-between">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">REMAINING</p>
@@ -272,11 +318,14 @@ export default function AdminSuitePage() {
             </div>
           </div>
 
+          {/* Vision card */}
           <div className="bg-primary rounded-2xl p-6 text-white shadow-sm overflow-hidden relative">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl" />
             <div className="relative z-10">
               <p className="text-xs font-semibold tracking-wider opacity-70 mb-3">ECOSYSTEM VISION</p>
-              <p className="text-lg font-bold leading-tight">Built on solid architectural foundations.</p>
+              <p className="text-lg font-bold leading-tight">
+                Built on solid architectural foundations.
+              </p>
             </div>
           </div>
         </div>

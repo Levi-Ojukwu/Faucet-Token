@@ -1,27 +1,17 @@
 // src/pages/PortfolioPage.tsx
-// import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { formatUnits } from 'ethers'
 import { useWallet } from '../context/WalletContext'
 import { useContractRead } from '../hooks/useContractRead'
 import { useContractWrite } from '../hooks/useContractWrite'
-import { Send } from 'lucide-react'
-import { useState } from 'react'
-
-interface Transaction {
-  id: string
-  type: 'claim' | 'transfer' | 'swap'
-  amount: string
-  token: string
-  status: 'success' | 'pending' | 'failed'
-  timestamp: string
-  from: string
-  to: string
-}
+import { useTransactionHistory, truncateAddress, type ChainTransaction } from '../hooks/useTransactionHistory'
+import { Send, RefreshCw, ExternalLink } from 'lucide-react'
 
 export default function PortfolioPage() {
   const { address } = useWallet()
   const [recipientAddress, setRecipientAddress] = useState('')
   const [transferAmount, setTransferAmount] = useState('')
+  const [showAllTx, setShowAllTx] = useState(false)
 
   // ── READ hooks ──
   const {
@@ -34,14 +24,6 @@ export default function PortfolioPage() {
     enabled: !!address,
   })
 
-//   const { data: totalSupplyRaw } = useContractRead<bigint>({
-//     functionName: 'totalSupply',
-//   })
-
-//   const { data: maxSupplyRaw } = useContractRead<bigint>({
-//     functionName: 'maxSupply',
-//   })
-
   // ── WRITE hook ──
   const {
     write: transfer,
@@ -51,61 +33,62 @@ export default function PortfolioPage() {
     reset: resetTransfer,
   } = useContractWrite({ functionName: 'transfer' })
 
-  // Format numbers
-  const balance = balanceRaw ? formatUnits(balanceRaw, 18) : '0'
-//   const totalSupply = totalSupplyRaw ? formatUnits(totalSupplyRaw, 18) : '0'
-//   const maxSupply = maxSupplyRaw ? formatUnits(maxSupplyRaw, 18) : '10000000'
-//   const progressPct =
-//     totalSupplyRaw && maxSupplyRaw
-//       ? Math.min(100, Math.round((Number(formatUnits(totalSupplyRaw, 18)) / Number(formatUnits(maxSupplyRaw, 18))) * 100))
-//       : 0
+  // ── Transaction History filtered to connected wallet ──
+  const {
+    transactions,
+    isLoading: isTxLoading,
+    error: txError,
+    refetch: refetchTx,
+  } = useTransactionHistory({ filterAddress: address })
 
+  const balance = balanceRaw ? formatUnits(balanceRaw, 18) : '0'
   const fmt = (n: string, dec = 2) =>
     parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
-
-  const truncate = (addr: string) =>
-    addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : ''
 
   const handleTransfer = async () => {
     resetTransfer()
     if (!recipientAddress || !transferAmount) return
-
     const result = await transfer([recipientAddress, transferAmount])
     if (result) {
       setRecipientAddress('')
       setTransferAmount('')
-      // Refetch balance after a short delay (let the block confirm)
-      setTimeout(() => refetchBalance(), 3000)
+      setTimeout(() => { refetchBalance(); refetchTx() }, 3000)
     }
   }
 
-  // Mock recent transactions — in a real app you'd index contract events
-  const recentTransactions: Transaction[] = [
-    {
-      id: '1', type: 'claim', amount: '10.00', token: 'LTK',
-      status: 'success', timestamp: 'TODAY, 10:45 AM',
-      from: 'Faucet', to: address || '',
-    },
-    {
-      id: '2', type: 'transfer', amount: '150.00', token: 'LTK',
-      status: 'success', timestamp: 'YESTERDAY',
-      from: address || '', to: '0x29...182c',
-    },
-    {
-      id: '3', type: 'claim', amount: '10.00', token: 'LTK',
-      status: 'success', timestamp: 'OCT 24, 2023',
-      from: 'Faucet', to: address || '',
-    },
-    {
-      id: '4', type: 'swap', amount: '2,500.00', token: 'LTK',
-      status: 'success', timestamp: 'OCT 22, 2023',
-      from: 'Internal', to: address || '',
-    },
-  ]
+  const displayedTxs = showAllTx ? transactions : transactions.slice(0, 4)
 
-  const getIcon = (type: string) => ({ claim: '🌱', transfer: '📤', swap: '🔄' }[type] ?? '💱')
-  const getStatusStyle = (s: string) =>
-    ({ success: 'bg-green-100 text-green-700', pending: 'bg-yellow-100 text-yellow-700', failed: 'bg-red-100 text-red-600' }[s] ?? 'bg-gray-100 text-gray-600')
+  // ── UI helpers ──
+  const getTxIcon = (type: ChainTransaction['type']) => {
+    const map = {
+      claim:     { emoji: '🌱', bg: 'bg-green-50' },
+      mint:      { emoji: '✨', bg: 'bg-purple-50' },
+      transfer:  { emoji: '📤', bg: 'bg-red-50' },
+      ownership: { emoji: '🛡️', bg: 'bg-yellow-50' },
+    }
+    return map[type] ?? { emoji: '💱', bg: 'bg-gray-50' }
+  }
+
+  const getTxLabel = (tx: ChainTransaction) => {
+    const labels = { claim: 'Claim Faucet', mint: 'Token Mint', transfer: 'Transfer', ownership: 'Ownership Transfer' }
+    return labels[tx.type] ?? 'Transaction'
+  }
+
+  const isOutgoing = (tx: ChainTransaction) =>
+    tx.type === 'transfer' && tx.from.toLowerCase() === address?.toLowerCase()
+
+  const getTxAmountDisplay = (tx: ChainTransaction) => {
+    if (tx.type === 'ownership') return 'Ownership'
+    const prefix = isOutgoing(tx) ? '-' : '+'
+    return `${prefix}${parseFloat(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} ${tx.token}`
+  }
+
+  const getTxAmountColor = (tx: ChainTransaction) => {
+    if (tx.type === 'ownership') return 'text-yellow-600'
+    return isOutgoing(tx) ? 'text-red-500' : 'text-green-600'
+  }
+
+  const explorerUrl = (hash: string) => `https://sepolia-blockscout.lisk.com/tx/${hash}`
 
   return (
     <div className="space-y-8">
@@ -147,7 +130,6 @@ export default function PortfolioPage() {
               <Send size={20} className="text-primary" />
               <h4 className="text-xl font-bold text-dark">Transfer LTK</h4>
             </div>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Recipient Address</label>
@@ -174,18 +156,14 @@ export default function PortfolioPage() {
                   </div>
                 </div>
               </div>
-
               {transferError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                  {transferError}
-                </div>
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{transferError}</div>
               )}
               {isTransferSuccess && (
                 <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
-                  ✅ Transfer sent successfully!
+                  ✅ Transfer sent! History will update shortly.
                 </div>
               )}
-
               <button
                 onClick={handleTransfer}
                 disabled={isTransferLoading || !recipientAddress || !transferAmount}
@@ -196,52 +174,122 @@ export default function PortfolioPage() {
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
                     Sending...
                   </span>
-                ) : (
-                  'Send Tokens →'
-                )}
+                ) : 'Send Tokens →'}
               </button>
             </div>
           </div>
         </div>
 
-        {/* ── Sidebar ── */}
+        {/* ── Sidebar: Live Transaction History ── */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 sticky top-24">
+
             <div className="flex items-center justify-between mb-6">
               <h4 className="text-lg font-bold text-dark">Recent Transactions</h4>
-              <button className="text-primary text-sm font-semibold hover:opacity-80">View All</button>
+              <button
+                onClick={refetchTx}
+                disabled={isTxLoading}
+                title="Refresh"
+                className="text-primary hover:opacity-70 transition disabled:opacity-40"
+              >
+                <RefreshCw size={16} className={isTxLoading ? 'animate-spin' : ''} />
+              </button>
             </div>
 
-            <div className="space-y-4">
-              {recentTransactions.map((tx) => (
-                <div key={tx.id} className="pb-4 border-b border-gray-100 last:border-b-0 last:pb-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3 flex-1">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${
-                        tx.type === 'claim' ? 'bg-green-50' : tx.type === 'transfer' ? 'bg-red-50' : 'bg-blue-50'
-                      }`}>
-                        {getIcon(tx.type)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-dark capitalize">
-                          {tx.type === 'claim' ? 'Claim Faucet' : tx.type === 'transfer' ? 'Transfer' : 'Asset Swap'}
-                        </p>
-                        <p className="text-xs text-gray-400">{tx.timestamp}</p>
-                        <p className="text-xs text-gray-400">{truncate(tx.type === 'transfer' ? tx.to : tx.from)}</p>
-                      </div>
+            {/* Loading skeleton */}
+            {isTxLoading && transactions.length === 0 && (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="animate-pulse flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-gray-100 rounded w-3/4" />
+                      <div className="h-2 bg-gray-100 rounded w-1/2" />
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className={`text-sm font-semibold ${tx.type === 'transfer' ? 'text-red-500' : 'text-green-600'}`}>
-                        {tx.type === 'transfer' ? '-' : '+'}{tx.amount} {tx.token}
-                      </p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full inline-block mt-1 ${getStatusStyle(tx.status)}`}>
-                        {tx.status}
-                      </span>
-                    </div>
+                    <div className="h-3 bg-gray-100 rounded w-16" />
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+                <p className="text-xs text-gray-400 text-center pt-2">Scanning blockchain events...</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {txError && !isTxLoading && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-xs">
+                Could not load transactions.{' '}
+                <button onClick={refetchTx} className="underline font-medium">Retry</button>
+              </div>
+            )}
+
+            {/* Empty */}
+            {!isTxLoading && !txError && transactions.length === 0 && (
+              <div className="text-center py-10">
+                <p className="text-4xl mb-3">🌱</p>
+                <p className="text-sm font-medium text-gray-600">No transactions yet</p>
+                <p className="text-xs text-gray-400 mt-1">Claim your first tokens to get started!</p>
+              </div>
+            )}
+
+            {/* Transaction rows */}
+            {displayedTxs.length > 0 && (
+              <div className="space-y-4">
+                {displayedTxs.map((tx) => {
+                  const { emoji, bg } = getTxIcon(tx.type)
+                  return (
+                    <div key={tx.id} className="pb-4 border-b border-gray-100 last:border-b-0 last:pb-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-base flex-shrink-0 ${bg}`}>
+                            {emoji}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1">
+                              <p className="text-sm font-medium text-dark truncate">{getTxLabel(tx)}</p>
+                              <a
+                                href={explorerUrl(tx.txHash)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-gray-400 hover:text-primary flex-shrink-0"
+                                title="View on Lisk explorer"
+                              >
+                                <ExternalLink size={11} />
+                              </a>
+                            </div>
+                            <p className="text-xs text-gray-400">{tx.timestamp}</p>
+                            <p className="text-xs text-gray-400 truncate font-mono">
+                              {tx.type === 'ownership'
+                                ? `→ ${truncateAddress(tx.to)}`
+                                : tx.type === 'claim'
+                                ? truncateAddress(tx.to)
+                                : `${truncateAddress(tx.from)} → ${truncateAddress(tx.to)}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right flex-shrink-0">
+                          <p className={`text-sm font-semibold ${getTxAmountColor(tx)}`}>
+                            {getTxAmountDisplay(tx)}
+                          </p>
+                          <span className="text-xs px-2 py-0.5 rounded-full inline-block mt-1 bg-green-100 text-green-700">
+                            {tx.status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* View all toggle */}
+            {transactions.length > 4 && (
+              <button
+                onClick={() => setShowAllTx(!showAllTx)}
+                className="w-full mt-5 text-primary text-sm font-semibold hover:opacity-80 transition"
+              >
+                {showAllTx ? 'Show Less ↑' : `View All (${transactions.length}) ↓`}
+              </button>
+            )}
           </div>
         </div>
       </div>

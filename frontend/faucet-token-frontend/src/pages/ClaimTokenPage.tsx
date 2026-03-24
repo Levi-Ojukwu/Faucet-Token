@@ -1,5 +1,4 @@
 // src/pages/ClaimTokenPage.tsx
-// import { useEffect } from 'react'
 import { formatUnits } from 'ethers'
 import { useWallet } from '../context/WalletContext'
 import { useContractRead } from '../hooks/useContractRead'
@@ -10,6 +9,7 @@ import { Lock } from 'lucide-react'
 export default function ClaimTokensPage() {
   const { address } = useWallet()
 
+  // ── READ hooks ──
   const { data: totalSupplyRaw, refetch: refetchSupply } = useContractRead<bigint>({
     functionName: 'totalSupply',
   })
@@ -20,6 +20,7 @@ export default function ClaimTokensPage() {
     functionName: 'faucetAmount',
   })
 
+  // ── WRITE hook ──
   const {
     write: requestToken,
     isLoading: isClaimLoading,
@@ -28,26 +29,51 @@ export default function ClaimTokensPage() {
     reset: resetClaim,
   } = useContractWrite({ functionName: 'requestToken' })
 
+  // ── Countdown (per-address) ──
   const { hours, minutes, seconds, canClaim, isActive } = useFaucetCountdown(address)
 
-  // Format display values
-  const totalSupply = totalSupplyRaw ? formatUnits(totalSupplyRaw, 18) : '0'
-  const maxSupply = maxSupplyRaw ? formatUnits(maxSupplyRaw, 18) : '10,000,000'
-  const faucetAmount = faucetAmountRaw ? formatUnits(faucetAmountRaw, 18) : '10'
+  // ─────────────────────────────────────────────────────
+  // Convert from wei (bigint) to a plain JS number FIRST,
+  // then do all math. This prevents the precision bug where
+  // 1030 / 10_000_000_000_000_000_000_000 ≈ 0.
+  // ─────────────────────────────────────────────────────
+  const totalSupplyNum = totalSupplyRaw
+    ? parseFloat(formatUnits(totalSupplyRaw, 18))
+    : 0
+
+  const maxSupplyNum = maxSupplyRaw
+    ? parseFloat(formatUnits(maxSupplyRaw, 18))
+    : 10_000_000
+
+  const faucetAmountNum = faucetAmountRaw
+    ? parseFloat(formatUnits(faucetAmountRaw, 18))
+    : 10
+
+  // Progress: what % of max supply has been minted?
+  // e.g. 1030 / 10_000_000 = 0.0103% — tiny but correct
   const progressPct =
-    totalSupplyRaw && maxSupplyRaw
-      ? Math.min(100, Math.round((Number(formatUnits(totalSupplyRaw, 18)) / Number(formatUnits(maxSupplyRaw, 18))) * 100))
+    maxSupplyNum > 0
+      ? Math.min(100, (totalSupplyNum / maxSupplyNum) * 100)
       : 0
 
-  const formatNumber = (n: string) =>
-    parseFloat(n).toLocaleString('en-US', { maximumFractionDigits: 0 })
+  // Display helpers
+  const formatNumber = (n: number) =>
+    n.toLocaleString('en-US', { maximumFractionDigits: 0 })
+
+  // Show at least 4 decimal places when progress is very small
+  // e.g. "0.0103%" instead of "0%"
+  const formatProgress = (pct: number) => {
+    if (pct === 0) return '0%'
+    if (pct >= 1) return `${pct.toFixed(2)}%`
+    // Very small values — show more decimals so it's not "0.00%"
+    return `${pct.toFixed(4)}%`
+  }
 
   const handleClaim = async () => {
     resetClaim()
     if (!address) return
     const result = await requestToken([])
     if (result) {
-      // Optimistically set next claim time so countdown starts immediately
       setNextClaimTime(address)
       refetchSupply()
     }
@@ -67,7 +93,7 @@ export default function ClaimTokensPage() {
             <div className="mb-8">
               <h3 className="text-2xl font-bold text-dark">Claim Daily LTK</h3>
               <p className="text-gray-600 text-sm mt-2">
-                Harvest {faucetAmount} LTK ecosystem rewards every 24 hours.
+                Harvest {faucetAmountNum} LTK ecosystem rewards every 24 hours.
               </p>
             </div>
 
@@ -103,7 +129,7 @@ export default function ClaimTokensPage() {
                     Claiming...
                   </span>
                 ) : (
-                  `Claim ${faucetAmount} LTK`
+                  `Claim ${faucetAmountNum} LTK`
                 )}
               </button>
             ) : (
@@ -126,15 +152,15 @@ export default function ClaimTokensPage() {
             {/* Success */}
             {isClaimSuccess && (
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
-                🎉 {faucetAmount} LTK claimed successfully! Check your wallet.
+                🎉 {faucetAmountNum} LTK claimed successfully! Check your wallet.
               </div>
             )}
 
             {/* Info */}
             <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-xs text-gray-500 leading-relaxed">
-                One claim per wallet every 24 hours — enforced on-chain. Your countdown is tied
-                to your address and does not affect other users.
+                One claim per wallet every 24 hours — enforced on-chain. Your countdown is
+                tied to your address and does not affect other users.
               </p>
             </div>
           </div>
@@ -148,27 +174,44 @@ export default function ClaimTokensPage() {
               <span>Protocol Distribution</span>
             </h4>
 
+            {/* Progress bar */}
             <div className="mb-6">
               <div className="flex justify-between items-center mb-2">
                 <p className="text-sm font-semibold text-dark">PROGRESS</p>
-                <p className="text-sm font-semibold text-primary">{progressPct}%</p>
+                <p className="text-sm font-semibold text-primary">
+                  {formatProgress(progressPct)}
+                </p>
               </div>
+
+              {/* The bar track */}
               <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                {/*
+                  We use Math.max(progressPct, 0.3) so the bar always shows
+                  a tiny sliver when tokens exist, instead of being invisible.
+                  This is purely cosmetic — the percentage label above is accurate.
+                */}
                 <div
-                  className="bg-primary h-full rounded-full transition-all duration-500"
-                  style={{ width: `${progressPct}%` }}
+                  className="bg-primary h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${totalSupplyNum > 0 ? Math.max(progressPct, 0.3) : 0}%`,
+                  }}
                 />
               </div>
+
+              {/* Tooltip explanation */}
+              <p className="text-xs text-gray-400 mt-2">
+                {formatNumber(totalSupplyNum)} of {formatNumber(maxSupplyNum)} LTK minted
+              </p>
             </div>
 
             <div className="space-y-4">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Circulating</p>
-                <p className="text-2xl font-bold text-dark">{formatNumber(totalSupply)}</p>
+                <p className="text-2xl font-bold text-dark">{formatNumber(totalSupplyNum)}</p>
               </div>
               <div className="pt-4 border-t border-gray-200">
                 <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Max Supply</p>
-                <p className="text-2xl font-bold text-dark">{formatNumber(maxSupply)} LTK</p>
+                <p className="text-2xl font-bold text-dark">{formatNumber(maxSupplyNum)} LTK</p>
               </div>
               <div className="pt-4 border-t border-gray-200 flex justify-between items-center">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Circulating</p>
@@ -179,7 +222,7 @@ export default function ClaimTokensPage() {
               <div className="flex justify-between items-center">
                 <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Network</p>
                 <span className="text-xs bg-green-100 text-green-700 font-semibold px-2 py-1 rounded-full">
-                  MAINNET
+                  LISK SEPOLIA
                 </span>
               </div>
             </div>
